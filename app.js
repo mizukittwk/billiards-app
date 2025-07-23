@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, Users, Play, BarChart3, RotateCcw, Shield, AlertCircle, Skull, ArrowLeft, Undo, ArrowLeftRight } from 'lucide-react';
+import { ChevronDown, Users, Play, BarChart3, RotateCcw, Shield, AlertCircle, Skull, ArrowLeft, Undo, ArrowUpDown } from 'lucide-react';
 
 // ゲームルールの定義
 const GameRules = {
@@ -56,8 +56,6 @@ const GameRules = {
 
 const BilliardsApp = () => {
   const [currentScreen, setCurrentScreen] = useState('home');
-  const [showAd, setShowAd] = useState(false);
-  const [adCountdown, setAdCountdown] = useState(5);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [players, setPlayers] = useState([
     { id: 1, name: 'プレイヤー1', gamesPlayed: 0, gamesWon: 0, totalShots: 0, successfulShots: 0, massWari: 0, totalBallsPocketed: 0, totalInnings: 0 },
@@ -90,18 +88,19 @@ const BilliardsApp = () => {
     currentInning: 1,
     shotInProgress: false,
     selectedBallsInShot: [],
-    selectedDeadBalls: [], // 無効級選択用
     player1Stats: {
       totalBallsPocketed: 0,
       totalInnings: 0,
       massWari: 0,
-      inningStats: []
+      inningStats: [],
+      shotsInGame: 0  // ゲーム内のショット数を追加
     },
     player2Stats: {
       totalBallsPocketed: 0,
       totalInnings: 0,
       massWari: 0,
-      inningStats: []
+      inningStats: [],
+      shotsInGame: 0  // ゲーム内のショット数を追加
     },
     currentInningBalls: 0,
     isNewInning: true,
@@ -165,6 +164,22 @@ const BilliardsApp = () => {
     return isHillHill;
   };
 
+  const swapPlayers = () => {
+    setGameSettings(prev => ({
+      ...prev,
+      player1: prev.player2,
+      player2: prev.player1
+    }));
+  };
+
+  const swapTargets = () => {
+    setGameSettings(prev => ({
+      ...prev,
+      player1Target: prev.player2Target,
+      player2Target: prev.player1Target
+    }));
+  };
+
   const addNewPlayer = () => {
     if (newPlayerName.trim()) {
       const newId = Math.max(...players.map(p => p.id), 0) + 1;
@@ -183,22 +198,6 @@ const BilliardsApp = () => {
       setNewPlayerName('');
       setShowNewPlayerForm(false);
     }
-  };
-
-  const swapPlayers = () => {
-    setGameSettings({
-      ...gameSettings,
-      player1: gameSettings.player2,
-      player2: gameSettings.player1
-    });
-  };
-
-  const swapTargets = () => {
-    setGameSettings({
-      ...gameSettings,
-      player1Target: gameSettings.player2Target,
-      player2Target: gameSettings.player1Target
-    });
   };
 
   const deletePlayer = (playerId) => {
@@ -224,82 +223,63 @@ const BilliardsApp = () => {
 
   const startGame = () => {
     if (gameSettings.player1 && gameSettings.player2) {
-      // 広告を表示
-      setShowAd(true);
-      setAdCountdown(5);
+      const rule = getCurrentRule();
+      const initialBalls = rule.getInitialBalls();
       
-      // カウントダウンタイマー
-      const timer = setInterval(() => {
-        setAdCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            setShowAd(false);
-            // 実際にゲームを開始
-            initializeGame();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+      // JCL9ボールの場合、ヒルヒル判定
+      const isHillHill = gameSettings.gameType === 'JCL9ボール' ? 
+        checkHillHill(0, 0, gameSettings.player1Target, gameSettings.player2Target) : false;
+      
+      // 開始時刻を記録
+      const now = new Date();
+      const startTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+      
+      setGameState({
+        currentPlayer: 1,
+        player1Score: 0,
+        player2Score: 0,
+        ballsOnTable: initialBalls,
+        deadBalls: [],
+        shotCount: 0,
+        currentRackShots: 0,
+        gameHistory: [],
+        deadMode: false,
+        player1Fouls: 0,
+        player2Fouls: 0,
+        actionHistory: [],
+        currentRack: 1,
+        currentInning: 1,
+        shotInProgress: false,
+        selectedBallsInShot: [],
+        player1Stats: {
+          totalBallsPocketed: 0,
+          totalInnings: 0,
+          massWari: 0,
+          inningStats: [],
+          shotsInGame: 0  // ゲーム内のショット数を追加
+        },
+        player2Stats: {
+          totalBallsPocketed: 0,
+          totalInnings: 0,
+          massWari: 0,
+          inningStats: [],
+          shotsInGame: 0  // ゲーム内のショット数を追加
+        },
+        currentInningBalls: 0,
+        isNewInning: true,
+        currentInningPerfect: true,
+        currentInningStartBalls: rule.ballCount,
+        player1RackBalls: 0,
+        player2RackBalls: 0,
+        pocketedByPlayer: {},
+        isHillHill: isHillHill,
+        startTime: startTime,
+        breakRule: gameSettings.breakRule,
+        threeFoulRule: gameSettings.threeFoulRule,
+        lastRackWinner: null
+      });
+      setCurrentScreen('game');
     }
-  };
-
-  const initializeGame = () => {
-    const rule = getCurrentRule();
-    const initialBalls = rule.getInitialBalls();
-    
-    // JCL9ボールの場合、ヒルヒル判定
-    const isHillHill = gameSettings.gameType === 'JCL9ボール' ? 
-      checkHillHill(0, 0, gameSettings.player1Target, gameSettings.player2Target) : false;
-    
-    // 開始時刻を記録
-    const now = new Date();
-    const startTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-    
-    setGameState({
-      currentPlayer: 1,
-      player1Score: 0,
-      player2Score: 0,
-      ballsOnTable: initialBalls,
-      deadBalls: [],
-      shotCount: 0,
-      currentRackShots: 0,
-      gameHistory: [],
-      deadMode: false,
-      player1Fouls: 0,
-      player2Fouls: 0,
-      actionHistory: [],
-      currentRack: 1,
-      currentInning: 1,
-      shotInProgress: false,
-      selectedBallsInShot: [],
-      selectedDeadBalls: [],
-      player1Stats: {
-        totalBallsPocketed: 0,
-        totalInnings: 0,
-        massWari: 0,
-        inningStats: []
-      },
-      player2Stats: {
-        totalBallsPocketed: 0,
-        totalInnings: 0,
-        massWari: 0,
-        inningStats: []
-      },
-      currentInningBalls: 0,
-      isNewInning: true,
-      currentInningPerfect: true,
-      currentInningStartBalls: rule.ballCount,
-      player1RackBalls: 0,
-      player2RackBalls: 0,
-      pocketedByPlayer: {},
-      isHillHill: isHillHill,
-      startTime: startTime,
-      breakRule: gameSettings.breakRule,
-      threeFoulRule: gameSettings.threeFoulRule,
-      lastRackWinner: null
-    });
-    setCurrentScreen('game');
   };
 
   const undoLastAction = () => {
@@ -339,6 +319,14 @@ const BilliardsApp = () => {
       // ボールが選択されていない場合はミスショット
       const newInning = Math.max(1, (gameState.currentPlayer === 2) ? gameState.currentInning + 1 : gameState.currentInning);
       
+      // 現在のプレイヤーのショット数を増加
+      const updatedPlayer1Stats = gameState.currentPlayer === 1 
+        ? { ...gameState.player1Stats, shotsInGame: gameState.player1Stats.shotsInGame + 1 }
+        : gameState.player1Stats;
+      const updatedPlayer2Stats = gameState.currentPlayer === 2 
+        ? { ...gameState.player2Stats, shotsInGame: gameState.player2Stats.shotsInGame + 1 }
+        : gameState.player2Stats;
+      
       const newState = {
         ...gameState,
         shotInProgress: false,
@@ -351,6 +339,8 @@ const BilliardsApp = () => {
         isNewInning: true,
         currentInningPerfect: true,
         currentInningStartBalls: gameState.ballsOnTable.length,
+        player1Stats: updatedPlayer1Stats,
+        player2Stats: updatedPlayer2Stats,
         actionHistory: [...gameState.actionHistory, {
           type: 'endShotMiss',
           previousState
@@ -372,7 +362,8 @@ const BilliardsApp = () => {
     const currentPlayerStats = gameState.currentPlayer === 1 ? gameState.player1Stats : gameState.player2Stats;
     let updatedPlayerStats = {
       ...currentPlayerStats,
-      totalBallsPocketed: currentPlayerStats.totalBallsPocketed + ballsPoketedCount
+      totalBallsPocketed: currentPlayerStats.totalBallsPocketed + ballsPoketedCount,
+      shotsInGame: currentPlayerStats.shotsInGame + 1  // 現在のプレイヤーのショット数を増加
     };
 
     // マスワリ判定（9ボールの場合、ノーミスで1イニングで全ボール取り切った場合）
@@ -440,6 +431,11 @@ const BilliardsApp = () => {
           nextBreakPlayer = ((gameState.currentRack + 1) % 2 === 1) ? 1 : 2;
         }
         
+        // 交互ブレイクで後手から先手（P2→P1）への変更時のみイニング増加
+        const newInning = (gameState.breakRule === 'alternate' && gameState.currentPlayer === 2 && nextBreakPlayer === 1) 
+          ? gameState.currentInning + 1 
+          : gameState.currentInning;
+        
         const finalState = {
           ...newState,
           ...updatedScore,
@@ -447,7 +443,7 @@ const BilliardsApp = () => {
           deadBalls: [],
           currentRackShots: 0,
           currentRack: gameState.currentRack + 1,
-          currentInning: gameState.currentInning,
+          currentInning: newInning,
           currentInningBalls: 0,
           isNewInning: true,
           currentInningPerfect: true,
@@ -457,11 +453,11 @@ const BilliardsApp = () => {
           pocketedByPlayer: {},
           player1RackBalls: 0,
           player2RackBalls: 0,
-          player1Fouls: 0, // ファウル数をリセット
-          player2Fouls: 0, // ファウル数をリセット
           isHillHill: newIsHillHill,
           currentPlayer: nextBreakPlayer,
-          lastRackWinner: gameState.currentPlayer
+          lastRackWinner: gameState.currentPlayer,
+          player1Fouls: 0,  // ファウル数をリセット
+          player2Fouls: 0   // ファウル数をリセット
         };
         
         setGameState(finalState);
@@ -542,13 +538,18 @@ const BilliardsApp = () => {
           nextBreakPlayer = ((gameState.currentRack + 1) % 2 === 1) ? 1 : 2;
         }
         
+        // 交互ブレイクで後手から先手（P2→P1）への変更時のみイニング増加
+        const newInning = (gameState.breakRule === 'alternate' && gameState.currentPlayer === 2 && nextBreakPlayer === 1) 
+          ? gameState.currentInning + 1 
+          : gameState.currentInning;
+        
         const finalState = {
           ...updatedScore,
           ballsOnTable: rule.getInitialBalls(),
           deadBalls: [],
           currentRackShots: 0,
           currentRack: gameState.currentRack + 1,
-          currentInning: gameState.currentInning,
+          currentInning: newInning,
           currentInningBalls: 0,
           isNewInning: true,
           currentInningPerfect: true,
@@ -556,10 +557,10 @@ const BilliardsApp = () => {
           shotInProgress: false,
           selectedBallsInShot: [],
           pocketedByPlayer: {},
-          player1Fouls: 0, // ファウル数をリセット
-          player2Fouls: 0, // ファウル数をリセット
           currentPlayer: nextBreakPlayer,
-          lastRackWinner: gameState.currentPlayer
+          lastRackWinner: gameState.currentPlayer,
+          player1Fouls: 0,  // ファウル数をリセット
+          player2Fouls: 0   // ファウル数をリセット
         };
         
         setGameState(finalState);
@@ -617,7 +618,8 @@ const BilliardsApp = () => {
     const currentPlayerStats = gameState.currentPlayer === 1 ? gameState.player1Stats : gameState.player2Stats;
     const updatedPlayerStats = {
       ...currentPlayerStats,
-      totalBallsPocketed: currentPlayerStats.totalBallsPocketed + ballsPoketedCount
+      totalBallsPocketed: currentPlayerStats.totalBallsPocketed + ballsPoketedCount,
+      shotsInGame: currentPlayerStats.shotsInGame + 1  // 現在のプレイヤーのショット数を増加
     };
     
     // ポケットしたボールの記録
@@ -671,6 +673,11 @@ const BilliardsApp = () => {
           nextBreakPlayer = ((gameState.currentRack + 1) % 2 === 1) ? 1 : 2;
         }
         
+        // 交互ブレイクで後手から先手（P2→P1）への変更時のみイニング増加
+        const newInning = (gameState.breakRule === 'alternate' && gameState.currentPlayer === 2 && nextBreakPlayer === 1) 
+          ? gameState.currentInning + 1 
+          : gameState.currentInning;
+        
         // ラックをリセット
         const finalState = {
           ...newState,
@@ -679,17 +686,17 @@ const BilliardsApp = () => {
           deadBalls: [],
           currentRackShots: 0,
           currentRack: gameState.currentRack + 1,
-          currentInning: gameState.currentInning, // イニングをリセットしない
+          currentInning: newInning, // 交互ブレイクのイニング処理
           currentInningBalls: 0,
           isNewInning: true,
           pocketedByPlayer: {},
           player1RackBalls: 0,
           player2RackBalls: 0,
-          player1Fouls: 0, // ファウル数をリセット
-          player2Fouls: 0, // ファウル数をリセット
           isHillHill: newIsHillHill,
           currentPlayer: nextBreakPlayer,
-          lastRackWinner: gameState.currentPlayer
+          lastRackWinner: gameState.currentPlayer,
+          player1Fouls: 0,  // ファウル数をリセット
+          player2Fouls: 0   // ファウル数をリセット
         };
         
         setGameState(finalState);
@@ -776,6 +783,11 @@ const BilliardsApp = () => {
           nextBreakPlayer = ((gameState.currentRack + 1) % 2 === 1) ? 1 : 2;
         }
         
+        // 交互ブレイクでプレイヤーが変わる場合、イニングを増加
+        const newInning = (gameState.breakRule === 'alternate' && nextBreakPlayer !== gameState.currentPlayer) 
+          ? gameState.currentInning + 1 
+          : gameState.currentInning;
+        
         // ラックをリセット
         const finalState = {
           ...updatedScore,
@@ -783,14 +795,14 @@ const BilliardsApp = () => {
           deadBalls: [],
           currentRackShots: 0,
           currentRack: gameState.currentRack + 1,
-          currentInning: gameState.currentInning, // イニングをリセットしない
+          currentInning: newInning, // 交互ブレイクのイニング処理
           currentInningBalls: 0,
           isNewInning: true,
           pocketedByPlayer: {},
-          player1Fouls: 0, // ファウル数をリセット
-          player2Fouls: 0, // ファウル数をリセット
           currentPlayer: nextBreakPlayer,
-          lastRackWinner: gameState.currentPlayer
+          lastRackWinner: gameState.currentPlayer,
+          player1Fouls: 0,  // ファウル数をリセット
+          player2Fouls: 0   // ファウル数をリセット
         };
         
         setGameState(finalState);
@@ -814,42 +826,16 @@ const BilliardsApp = () => {
     const previousState = { ...gameState };
     delete previousState.actionHistory;
     
-    if (gameState.deadMode) {
-      // 無効級モードを終了し、選択したボールを無効級にする
-      const validDeadBalls = gameState.selectedDeadBalls.filter(ball => 
-        gameState.ballsOnTable.includes(ball) && 
-        !((gameSettings.gameType === '9ボール' || gameSettings.gameType === 'JCL9ボール') && ball === 9)
-      );
-      
-      const newDeadBalls = [...new Set([...gameState.deadBalls, ...validDeadBalls])];
-      
-      const newState = {
-        ...gameState,
-        deadMode: false,
-        deadBalls: newDeadBalls,
-        selectedDeadBalls: [],
-        actionHistory: [...gameState.actionHistory, {
-          type: 'toggleDeadMode',
-          addedDeadBalls: validDeadBalls,
-          previousState
-        }]
-      };
-      
-      setGameState(newState);
-    } else {
-      // 無効級モードを開始
-      const newState = {
-        ...gameState,
-        deadMode: true,
-        selectedDeadBalls: [],
-        actionHistory: [...gameState.actionHistory, {
-          type: 'toggleDeadMode',
-          previousState
-        }]
-      };
-      
-      setGameState(newState);
-    }
+    const newState = {
+      ...gameState,
+      deadMode: !gameState.deadMode,
+      actionHistory: [...gameState.actionHistory, {
+        type: 'toggleDeadMode',
+        previousState
+      }]
+    };
+    
+    setGameState(newState);
   };
 
   const pocketBall = (ballNumber) => {
@@ -864,38 +850,36 @@ const BilliardsApp = () => {
     const rule = getCurrentRule();
     
     if (gameState.deadMode) {
-      // 無効級モード - 複数選択
+      // 無効級モード
       // 9ボールとJCL9ボールでは9番を無効球にできない
       if ((gameSettings.gameType === '9ボール' || gameSettings.gameType === 'JCL9ボール') && ballNumber === 9) {
         alert('9番ボールは無効球にできません');
         return;
       }
       
-      if (gameState.ballsOnTable.includes(ballNumber)) {
-        const isSelected = gameState.selectedDeadBalls.includes(ballNumber);
-        const newSelectedDeadBalls = isSelected 
-          ? gameState.selectedDeadBalls.filter(ball => ball !== ballNumber)
-          : [...gameState.selectedDeadBalls, ballNumber];
+      if (gameState.ballsOnTable.includes(ballNumber) && !gameState.deadBalls.includes(ballNumber)) {
+        const newDeadBalls = [...gameState.deadBalls, ballNumber];
         
         const newState = {
           ...gameState,
-          selectedDeadBalls: newSelectedDeadBalls,
+          deadBalls: newDeadBalls,
+          // deadMode: false を削除し、複数選択可能にする
           actionHistory: [...gameState.actionHistory, {
-            type: 'selectDeadBall',
+            type: 'deadBall',
             ballNumber,
-            isSelected: !isSelected,
             previousState
           }]
         };
         
         setGameState(newState);
       } else if (gameState.deadBalls.includes(ballNumber)) {
-        // 既に無効級のボールをクリックした場合は解除
+        // 無効級を解除
         const newDeadBalls = gameState.deadBalls.filter(ball => ball !== ballNumber);
         
         const newState = {
           ...gameState,
           deadBalls: newDeadBalls,
+          // deadMode: false を削除し、複数選択可能にする
           actionHistory: [...gameState.actionHistory, {
             type: 'undeadBall',
             ballNumber,
@@ -936,7 +920,8 @@ const BilliardsApp = () => {
         const currentPlayerStats = gameState.currentPlayer === 1 ? gameState.player1Stats : gameState.player2Stats;
         let updatedPlayerStats = {
           ...currentPlayerStats,
-          totalBallsPocketed: currentPlayerStats.totalBallsPocketed + 1
+          totalBallsPocketed: currentPlayerStats.totalBallsPocketed + 1,
+          shotsInGame: currentPlayerStats.shotsInGame + 1  // 現在のプレイヤーのショット数を増加
         };
 
         // JCL9ボール用のラック内ボール数更新
@@ -1017,6 +1002,11 @@ const BilliardsApp = () => {
               nextBreakPlayer = ((gameState.currentRack + 1) % 2 === 1) ? 1 : 2;
             }
             
+            // 交互ブレイクで後手から先手（P2→P1）への変更時のみイニング増加
+            const newInning = (gameState.breakRule === 'alternate' && gameState.currentPlayer === 2 && nextBreakPlayer === 1) 
+              ? gameState.currentInning + 1 
+              : gameState.currentInning;
+            
             const finalState = {
               ...newState,
               ...newScore,
@@ -1024,7 +1014,7 @@ const BilliardsApp = () => {
               deadBalls: [],
               currentRackShots: 0,
               currentRack: gameState.currentRack + 1,
-              currentInning: gameState.currentInning, // イニングをリセットしない
+              currentInning: newInning, // 交互ブレイクのイニング処理
               currentInningBalls: 0,
               isNewInning: true,
               currentInningPerfect: true,
@@ -1036,11 +1026,11 @@ const BilliardsApp = () => {
               player1Stats: finalPlayer1Stats,
               player2Stats: finalPlayer2Stats,
               pocketedByPlayer: {},
-              player1Fouls: 0, // ファウル数をリセット
-              player2Fouls: 0, // ファウル数をリセット
               isHillHill: newIsHillHill,
               currentPlayer: nextBreakPlayer,
-              lastRackWinner: gameState.currentPlayer
+              lastRackWinner: gameState.currentPlayer,
+              player1Fouls: 0,  // ファウル数をリセット
+              player2Fouls: 0   // ファウル数をリセット
             };
             
             setGameState(finalState);
@@ -1142,13 +1132,18 @@ const BilliardsApp = () => {
               nextBreakPlayer = ((gameState.currentRack + 1) % 2 === 1) ? 1 : 2;
             }
             
+            // 交互ブレイクで後手から先手（P2→P1）への変更時のみイニング増加
+            const newInning = (gameState.breakRule === 'alternate' && gameState.currentPlayer === 2 && nextBreakPlayer === 1) 
+              ? gameState.currentInning + 1 
+              : gameState.currentInning;
+            
             const finalState = {
               ...updatedScore,
               ballsOnTable: rule.getInitialBalls(),
               deadBalls: [],
               currentRackShots: 0,
               currentRack: gameState.currentRack + 1,
-              currentInning: gameState.currentInning, // イニングをリセットしない
+              currentInning: newInning, // 交互ブレイクのイニング処理
               currentInningBalls: 0,
               isNewInning: true,
               currentInningPerfect: true,
@@ -1160,10 +1155,10 @@ const BilliardsApp = () => {
               player1RackBalls: 0,
               player2RackBalls: 0,
               pocketedByPlayer: {},
-              player1Fouls: 0, // ファウル数をリセット
-              player2Fouls: 0, // ファウル数をリセット
               currentPlayer: nextBreakPlayer,
-              lastRackWinner: gameState.currentPlayer
+              lastRackWinner: gameState.currentPlayer,
+              player1Fouls: 0,  // ファウル数をリセット
+              player2Fouls: 0   // ファウル数をリセット
             };
             
             setGameState(finalState);
@@ -1217,16 +1212,29 @@ const BilliardsApp = () => {
     let updatedPlayer1Stats = gameState.player1Stats;
     let updatedPlayer2Stats = gameState.player2Stats;
     
+    // ショット数を増加（現在のプレイヤーがショットをしたとみなす）
+    if (gameState.currentPlayer === 1) {
+      updatedPlayer1Stats = {
+        ...gameState.player1Stats,
+        shotsInGame: gameState.player1Stats.shotsInGame + 1
+      };
+    } else {
+      updatedPlayer2Stats = {
+        ...gameState.player2Stats,
+        shotsInGame: gameState.player2Stats.shotsInGame + 1
+      };
+    }
+    
     if (!gameState.isNewInning) {
       if (gameState.currentPlayer === 1) {
         updatedPlayer1Stats = {
-          ...gameState.player1Stats,
+          ...updatedPlayer1Stats,
           totalInnings: gameState.player1Stats.totalInnings + 1,
           inningStats: [...gameState.player1Stats.inningStats, gameState.currentInningBalls]
         };
       } else {
         updatedPlayer2Stats = {
-          ...gameState.player2Stats,
+          ...updatedPlayer2Stats,
           totalInnings: gameState.player2Stats.totalInnings + 1,
           inningStats: [...gameState.player2Stats.inningStats, gameState.currentInningBalls]
         };
@@ -1265,16 +1273,29 @@ const BilliardsApp = () => {
     let updatedPlayer1Stats = gameState.player1Stats;
     let updatedPlayer2Stats = gameState.player2Stats;
     
+    // ショット数を増加（現在のプレイヤーがセーフティショットをしたとみなす）
+    if (gameState.currentPlayer === 1) {
+      updatedPlayer1Stats = {
+        ...gameState.player1Stats,
+        shotsInGame: gameState.player1Stats.shotsInGame + 1
+      };
+    } else {
+      updatedPlayer2Stats = {
+        ...gameState.player2Stats,
+        shotsInGame: gameState.player2Stats.shotsInGame + 1
+      };
+    }
+    
     if (!gameState.isNewInning) {
       if (gameState.currentPlayer === 1) {
         updatedPlayer1Stats = {
-          ...gameState.player1Stats,
+          ...updatedPlayer1Stats,
           totalInnings: gameState.player1Stats.totalInnings + 1,
           inningStats: [...gameState.player1Stats.inningStats, gameState.currentInningBalls]
         };
       } else {
         updatedPlayer2Stats = {
-          ...gameState.player2Stats,
+          ...updatedPlayer2Stats,
           totalInnings: gameState.player2Stats.totalInnings + 1,
           inningStats: [...gameState.player2Stats.inningStats, gameState.currentInningBalls]
         };
@@ -1316,6 +1337,14 @@ const BilliardsApp = () => {
     // ファウルもプレイヤー交代なので、プレイヤー1に戻る場合はイニング+1
     const newInning = Math.max(1, (gameState.currentPlayer === 2) ? gameState.currentInning + 1 : gameState.currentInning);
     
+    // ショット数を増加（現在のプレイヤーがファウルしたとみなす）
+    let updatedPlayer1Stats = gameState.currentPlayer === 1 
+      ? { ...gameState.player1Stats, shotsInGame: gameState.player1Stats.shotsInGame + 1 }
+      : gameState.player1Stats;
+    let updatedPlayer2Stats = gameState.currentPlayer === 2 
+      ? { ...gameState.player2Stats, shotsInGame: gameState.player2Stats.shotsInGame + 1 }
+      : gameState.player2Stats;
+    
     // 3ファウルチェック（3ファウルルールありの場合のみ、かつ9ボールまたはJCL9ボールの場合）
     if (gameState.threeFoulRule && 
         (gameSettings.gameType === '9ボール' || gameSettings.gameType === 'JCL9ボール') &&
@@ -1355,6 +1384,11 @@ const BilliardsApp = () => {
         nextBreakPlayer = ((gameState.currentRack + 1) % 2 === 1) ? 1 : 2;
       }
       
+      // 交互ブレイクで後手から先手（P2→P1）への変更時のみイニング増加
+      const newInningForRack = (gameState.breakRule === 'alternate' && gameState.currentPlayer === 2 && nextBreakPlayer === 1) 
+        ? newInning + 1 
+        : newInning;
+      
       const newState = {
         ...gameState,
         ...newScore,
@@ -1363,7 +1397,7 @@ const BilliardsApp = () => {
         deadBalls: [],
         currentRackShots: 0,
         currentRack: gameState.currentRack + 1,
-        currentInning: newInning, // 計算されたイニングを使用（リセットしない）
+        currentInning: newInningForRack, // 交互ブレイクのイニング処理
         shotInProgress: false,
         selectedBallsInShot: [],
         player1Fouls: 0,
@@ -1542,6 +1576,8 @@ const BilliardsApp = () => {
       currentInning: newInning,
       player1Fouls: newPlayer1Fouls,
       player2Fouls: newPlayer2Fouls,
+      player1Stats: updatedPlayer1Stats,
+      player2Stats: updatedPlayer2Stats,
       actionHistory: [...gameState.actionHistory, {
         type: 'foul',
         previousState
@@ -1562,7 +1598,7 @@ const BilliardsApp = () => {
             ...player,
             gamesPlayed: player.gamesPlayed + 1,
             gamesWon: player.gamesWon + 1,
-            totalShots: player.totalShots + gameState.shotCount,
+            totalShots: player.totalShots + winnerStats.shotsInGame,  // shotsInGameを使用
             successfulShots: player.successfulShots + winnerStats.totalBallsPocketed,
             massWari: player.massWari + winnerStats.massWari,
             totalBallsPocketed: (player.totalBallsPocketed || 0) + winnerStats.totalBallsPocketed,
@@ -1575,7 +1611,7 @@ const BilliardsApp = () => {
           return {
             ...player,
             gamesPlayed: player.gamesPlayed + 1,
-            totalShots: player.totalShots + gameState.shotCount,
+            totalShots: player.totalShots + loserStats.shotsInGame,  // shotsInGameを使用
             successfulShots: player.successfulShots + loserStats.totalBallsPocketed,
             massWari: player.massWari + loserStats.massWari,
             totalBallsPocketed: (player.totalBallsPocketed || 0) + loserStats.totalBallsPocketed,
@@ -1600,7 +1636,7 @@ const BilliardsApp = () => {
     return { accuracy, winRate, avgScore, avgInningPocket };
   };
 
-  const BallComponent = ({ ballNumber, isOnTable, isDead, isSelected, isDeadSelected, pocketedBy, onClick }) => {
+  const BallComponent = ({ ballNumber, isOnTable, isDead, isSelected, pocketedBy, onClick }) => {
     const isStripe = ballNumber > 8 && ballNumber <= 15;
     const isEightBall = ballNumber === 8;
     
@@ -1614,7 +1650,7 @@ const BilliardsApp = () => {
             : 'opacity-30 cursor-not-allowed border-2 border-stone-300'
         } ${isDead ? 'border-red-600 border-2' : ''} ${
           isSelected ? 'ring-4 ring-amber-500 ring-offset-2 ring-offset-stone-100 scale-110' : ''
-        } ${isDeadSelected ? 'ring-4 ring-red-500 ring-offset-2 ring-offset-stone-100' : ''}`}
+        }`}
         style={{
           backgroundColor: isOnTable && !isDead ? ballColors[ballNumber] : '#e5e5e5'
         }}
@@ -1653,57 +1689,6 @@ const BilliardsApp = () => {
       </button>
     );
   };
-
-  // 広告画面
-  if (showAd) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-amber-50 to-stone-100 text-stone-800 flex items-center justify-center p-6">
-        <div className="max-w-2xl w-full text-center">
-          <div className="bg-white shadow-lg rounded-lg p-8 border-2 border-stone-300">
-            <h2 className="text-2xl font-serif tracking-wider mb-4 text-stone-800">広告スペース</h2>
-            
-            {/* 実際の広告を表示する場所 */}
-            <div className="bg-stone-100 h-96 rounded-lg flex items-center justify-center mb-6 border-2 border-stone-300">
-              <div className="text-center">
-                <p className="text-lg font-light text-stone-600 mb-4">
-                  ここに広告が表示されます
-                </p>
-                <p className="text-sm text-stone-500">
-                  Google AdSense または他の広告プロバイダーのコードを挿入
-                </p>
-                {/* 実際の広告コードを挿入する場所 */}
-                {/* <div id="ad-container"></div> */}
-              </div>
-            </div>
-            
-            <div className="text-center">
-              <p className="text-lg font-light text-stone-600 mb-2">
-                ゲーム開始まで
-              </p>
-              <div className="text-5xl font-serif text-amber-600 mb-4">
-                {adCountdown}
-              </div>
-              <button
-                onClick={() => {
-                  setShowAd(false);
-                  initializeGame();
-                }}
-                className="px-6 py-2 text-sm font-light text-stone-500 hover:text-stone-700 transition-colors"
-              >
-                スキップ →
-              </button>
-            </div>
-          </div>
-          
-          <div className="mt-6 text-center">
-            <p className="text-xs text-stone-500 font-light">
-              広告は当アプリの運営に役立てられます
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // ホーム画面
   if (currentScreen === 'home') {
@@ -1866,65 +1851,6 @@ const BilliardsApp = () => {
               )}
             </div>
 
-            {/* プレイヤー選択 */}
-            <div className="flex items-end gap-4">
-              <div className="flex-1">
-                <label className="block text-xs tracking-[0.2em] text-stone-600 mb-3 font-light">
-                  PLAYER 1
-                </label>
-                <div className="relative">
-                  <select
-                    value={gameSettings.player1?.id || ''}
-                    onChange={(e) => {
-                      const player = players.find(p => p.id === parseInt(e.target.value));
-                      setGameSettings({...gameSettings, player1: player});
-                    }}
-                    className="w-full bg-white border border-stone-300 p-4 appearance-none font-light tracking-wider focus:border-amber-600 transition-colors shadow-sm"
-                  >
-                    <option value="" className="bg-white">Select</option>
-                    {players.map(player => (
-                      <option key={player.id} value={player.id} className="bg-white">
-                        {player.id}.{player.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-stone-600" />
-                </div>
-              </div>
-
-              <button
-                onClick={swapPlayers}
-                className="p-4 border-2 border-stone-300 hover:border-amber-600 hover:text-amber-700 bg-white transition-all duration-300 shadow-sm text-stone-700 hover:bg-amber-50 rounded-lg"
-                title="プレイヤーを入れ替え"
-              >
-                <ArrowLeftRight className="w-5 h-5" />
-              </button>
-
-              <div className="flex-1">
-                <label className="block text-xs tracking-[0.2em] text-stone-600 mb-3 font-light">
-                  PLAYER 2
-                </label>
-                <div className="relative">
-                  <select
-                    value={gameSettings.player2?.id || ''}
-                    onChange={(e) => {
-                      const player = players.find(p => p.id === parseInt(e.target.value));
-                      setGameSettings({...gameSettings, player2: player});
-                    }}
-                    className="w-full bg-white border border-stone-300 p-4 appearance-none font-light tracking-wider focus:border-amber-600 transition-colors shadow-sm"
-                  >
-                    <option value="" className="bg-white">Select</option>
-                    {players.map(player => (
-                      <option key={player.id} value={player.id} className="bg-white">
-                        {player.id}.{player.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-stone-600" />
-                </div>
-              </div>
-            </div>
-
             {/* ブレイクルール選択 */}
             <div>
               <label className="block text-sm font-light tracking-wider text-stone-600 mb-2">
@@ -1993,6 +1919,98 @@ const BilliardsApp = () => {
               </div>
             )}
 
+            {/* プレイヤー選択 */}
+            <div>
+              <div className="flex justify-between mb-2">
+                <label className="text-xs tracking-[0.2em] text-stone-600 font-light">PLAYER 1</label>
+                <label className="text-xs tracking-[0.2em] text-stone-600 font-light">PLAYER 2</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <select
+                    value={gameSettings.player1?.id || ''}
+                    onChange={(e) => {
+                      const player = players.find(p => p.id === parseInt(e.target.value));
+                      setGameSettings({...gameSettings, player1: player});
+                    }}
+                    className="w-full bg-white border border-stone-300 p-2 appearance-none font-light tracking-wider focus:border-amber-600 transition-colors shadow-sm text-sm"
+                  >
+                    <option value="" className="bg-white">Select</option>
+                    {players.map(player => (
+                      <option key={player.id} value={player.id} className="bg-white">
+                        {player.id}.{player.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-stone-600" />
+                </div>
+
+                <button
+                  onClick={swapPlayers}
+                  className="p-2 border-2 border-stone-300 hover:border-amber-600 transition-all duration-300 bg-white shadow-sm"
+                  title="プレイヤーを入れ替え"
+                >
+                  <ArrowUpDown className="w-4 h-4 text-stone-600" />
+                </button>
+
+                <div className="relative flex-1">
+                  <select
+                    value={gameSettings.player2?.id || ''}
+                    onChange={(e) => {
+                      const player = players.find(p => p.id === parseInt(e.target.value));
+                      setGameSettings({...gameSettings, player2: player});
+                    }}
+                    className="w-full bg-white border border-stone-300 p-2 appearance-none font-light tracking-wider focus:border-amber-600 transition-colors shadow-sm text-sm"
+                  >
+                    <option value="" className="bg-white">Select</option>
+                    {players.map(player => (
+                      <option key={player.id} value={player.id} className="bg-white">
+                        {player.id}.{player.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-stone-600" />
+                </div>
+              </div>
+            </div>
+
+            {/* 目標設定 */}
+            <div>
+              <div className="flex justify-between mb-2">
+                <label className="text-xs tracking-[0.2em] text-stone-600 font-light">P1 RACE TO</label>
+                <label className="text-xs tracking-[0.2em] text-stone-600 font-light">P2 RACE TO</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={gameSettings.player1Target}
+                  onChange={(e) => setGameSettings({...gameSettings, player1Target: parseInt(e.target.value)})}
+                  className="flex-1 bg-white border border-stone-300 p-2 font-light tracking-wider focus:border-amber-600 transition-colors text-center shadow-sm text-sm"
+                  min={gameSettings.isJCL ? "10" : "1"}
+                  max={gameSettings.isJCL ? "200" : "10"}
+                  step={gameSettings.isJCL ? "5" : "1"}
+                />
+                
+                <button
+                  onClick={swapTargets}
+                  className="p-2 border-2 border-stone-300 hover:border-amber-600 transition-all duration-300 bg-white shadow-sm"
+                  title="目標を入れ替え"
+                >
+                  <ArrowUpDown className="w-4 h-4 text-stone-600" />
+                </button>
+
+                <input
+                  type="number"
+                  value={gameSettings.player2Target}
+                  onChange={(e) => setGameSettings({...gameSettings, player2Target: parseInt(e.target.value)})}
+                  className="flex-1 bg-white border border-stone-300 p-2 font-light tracking-wider focus:border-amber-600 transition-colors text-center shadow-sm text-sm"
+                  min={gameSettings.isJCL ? "10" : "1"}
+                  max={gameSettings.isJCL ? "200" : "10"}
+                  step={gameSettings.isJCL ? "5" : "1"}
+                />
+              </div>
+            </div>
+
             {/* 新規プレイヤー追加 */}
             <div>
               {!showNewPlayerForm ? (
@@ -2030,47 +2048,6 @@ const BilliardsApp = () => {
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* 目標設定 */}
-            <div className="flex items-end gap-4">
-              <div className="flex-1">
-                <label className="block text-xs tracking-[0.2em] text-stone-600 mb-3 font-light">
-                  P1 TARGET {getCurrentRule().targetUnit}
-                </label>
-                <input
-                  type="number"
-                  value={gameSettings.player1Target}
-                  onChange={(e) => setGameSettings({...gameSettings, player1Target: parseInt(e.target.value)})}
-                  className="w-full bg-white border border-stone-300 p-4 font-light tracking-wider focus:border-amber-600 transition-colors text-center shadow-sm"
-                  min={gameSettings.isJCL ? "10" : "1"}
-                  max={gameSettings.isJCL ? "200" : "10"}
-                  step={gameSettings.isJCL ? "5" : "1"}
-                />
-              </div>
-
-              <button
-                onClick={swapTargets}
-                className="p-4 border-2 border-stone-300 hover:border-amber-600 hover:text-amber-700 bg-white transition-all duration-300 shadow-sm text-stone-700 hover:bg-amber-50 rounded-lg"
-                title="ターゲットを入れ替え"
-              >
-                <ArrowLeftRight className="w-5 h-5" />
-              </button>
-
-              <div className="flex-1">
-                <label className="block text-xs tracking-[0.2em] text-stone-600 mb-3 font-light">
-                  P2 TARGET {getCurrentRule().targetUnit}
-                </label>
-                <input
-                  type="number"
-                  value={gameSettings.player2Target}
-                  onChange={(e) => setGameSettings({...gameSettings, player2Target: parseInt(e.target.value)})}
-                  className="w-full bg-white border border-stone-300 p-4 font-light tracking-wider focus:border-amber-600 transition-colors text-center shadow-sm"
-                  min={gameSettings.isJCL ? "10" : "1"}
-                  max={gameSettings.isJCL ? "200" : "10"}
-                  step={gameSettings.isJCL ? "5" : "1"}
-                />
-              </div>
             </div>
 
             {/* ゲーム開始ボタン */}
@@ -2185,7 +2162,6 @@ const BilliardsApp = () => {
                   isOnTable={gameState.ballsOnTable.includes(ballNumber)}
                   isDead={gameState.deadBalls.includes(ballNumber)}
                   isSelected={gameState.selectedBallsInShot.includes(ballNumber)}
-                  isDeadSelected={gameState.selectedDeadBalls && gameState.selectedDeadBalls.includes(ballNumber)}
                   pocketedBy={gameState.pocketedByPlayer[ballNumber]}
                   onClick={() => pocketBall(ballNumber)}
                 />
@@ -2193,22 +2169,26 @@ const BilliardsApp = () => {
             </div>
           </div>
 
-          {/* 操作ボタン */}
-          <div className="space-y-3">
-            {/* CHANGEボタン（上部に配置） */}
+          {/* CHANGEボタンを上に配置 */}
+          <div className="mb-4">
             <button
               onClick={switchPlayer}
               disabled={gameState.shotInProgress}
-              className={`w-full border-2 border-stone-300 hover:border-green-600 hover:text-green-700 py-4 transition-all duration-300 flex items-center justify-center gap-3 bg-white shadow-md text-stone-700 ${
-                gameState.shotInProgress ? 'opacity-30' : ''
+              className={`w-full py-3 font-medium tracking-wider text-base transition-all duration-300 shadow-md ${
+                gameState.shotInProgress 
+                  ? 'bg-stone-300 text-stone-500 cursor-not-allowed' 
+                  : 'border-2 border-green-600 hover:bg-green-600 hover:text-white bg-white text-green-700'
               }`}
             >
-              <RotateCcw className="w-6 h-6" />
-              <span className="text-base font-medium tracking-wider">CHANGE PLAYER</span>
+              <div className="flex items-center justify-center gap-2">
+                <RotateCcw className="w-5 h-5" />
+                <span>CHANGE</span>
+              </div>
             </button>
+          </div>
 
-            {/* 5つのボタングループ */}
-            <div className="grid grid-cols-5 gap-2">
+          {/* 操作ボタン */}
+          <div className="grid grid-cols-5 gap-2">
             <button
               onClick={undoLastAction}
               disabled={gameState.actionHistory.length === 0}
@@ -2222,30 +2202,15 @@ const BilliardsApp = () => {
             </button>
 
             <button
-              onClick={toggleDeadMode}
-              disabled={gameState.shotInProgress}
+              onClick={toggleShotMode}
               className={`border-2 p-3 transition-all duration-300 flex flex-col items-center justify-center gap-1 shadow-sm ${
-                gameState.deadMode 
-                  ? 'border-red-600 bg-red-100 text-red-700' 
-                  : 'border-stone-300 hover:border-red-600 hover:text-red-700 bg-white text-stone-700'
-              } ${gameState.shotInProgress ? 'opacity-30' : ''}`}
-            >
-              <Skull className="w-5 h-5" />
-              <span className="text-xs font-light">{gameState.deadMode ? 'DONE' : 'DEAD'}</span>
-              {gameState.deadMode && gameState.selectedDeadBalls && gameState.selectedDeadBalls.length > 0 && (
-                <span className="text-xs text-red-700 font-bold">{gameState.selectedDeadBalls.length}</span>
-              )}
-            </button>
-
-            <button
-              onClick={foul}
-              disabled={gameState.shotInProgress}
-              className={`border-2 border-stone-300 hover:border-orange-600 hover:text-orange-700 p-3 transition-all duration-300 flex flex-col items-center justify-center gap-1 bg-white shadow-sm text-stone-700 ${
-                gameState.shotInProgress ? 'opacity-30' : ''
+                gameState.shotInProgress 
+                  ? 'border-amber-600 bg-amber-100 text-amber-700' 
+                  : 'border-stone-300 hover:border-amber-600 hover:text-amber-700 bg-white text-stone-700'
               }`}
             >
-              <AlertCircle className="w-5 h-5" />
-              <span className="text-xs font-light">FOUL</span>
+              <Play className="w-5 h-5" />
+              <span className="text-xs font-light">{gameState.shotInProgress ? 'END SHOT' : 'DOUBLE IN'}</span>
             </button>
 
             <button
@@ -2260,17 +2225,28 @@ const BilliardsApp = () => {
             </button>
 
             <button
-              onClick={toggleShotMode}
+              onClick={toggleDeadMode}
+              disabled={gameState.shotInProgress}
               className={`border-2 p-3 transition-all duration-300 flex flex-col items-center justify-center gap-1 shadow-sm ${
-                gameState.shotInProgress 
-                  ? 'bg-amber-600 text-white hover:bg-amber-700 border-amber-600' 
-                  : 'border-stone-300 hover:border-amber-600 hover:text-amber-700 bg-white text-stone-700'
+                gameState.deadMode 
+                  ? 'border-red-600 bg-red-100 text-red-700' 
+                  : 'border-stone-300 hover:border-red-600 hover:text-red-700 bg-white text-stone-700'
+              } ${gameState.shotInProgress ? 'opacity-30' : ''}`}
+            >
+              <Skull className="w-5 h-5" />
+              <span className="text-xs font-light">DEAD</span>
+            </button>
+
+            <button
+              onClick={foul}
+              disabled={gameState.shotInProgress}
+              className={`border-2 border-stone-300 hover:border-orange-600 hover:text-orange-700 p-3 transition-all duration-300 flex flex-col items-center justify-center gap-1 bg-white shadow-sm text-stone-700 ${
+                gameState.shotInProgress ? 'opacity-30' : ''
               }`}
             >
-              <Play className="w-5 h-5" />
-              <span className="text-xs font-light">{gameState.shotInProgress ? 'END' : 'DOUBLE IN'}</span>
+              <AlertCircle className="w-5 h-5" />
+              <span className="text-xs font-light">FOUL</span>
             </button>
-            </div>
           </div>
         </div>
       </div>
@@ -2569,4 +2545,3 @@ const BilliardsApp = () => {
 };
 
 export default BilliardsApp;
-                  
